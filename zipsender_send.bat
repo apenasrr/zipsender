@@ -1,0 +1,2 @@
+python zipsender_send.py
+pause

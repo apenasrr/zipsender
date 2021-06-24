@@ -1,0 +1,2 @@
+python auth_all_folders.py
+pause

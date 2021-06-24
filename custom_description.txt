@@ -1,0 +1,2 @@
+== ({count_parts} {str_part}) == (via app Zipind)
+https://github.com/apenasrr/zipind
