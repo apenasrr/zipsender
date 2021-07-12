@@ -2,6 +2,7 @@ from utils import add_path_script_folders
 list_folders_name = ['Telegram_filesender']
 add_path_script_folders(list_folders_name)
 import telegram_filesender
+import api_telegram
 
 import pandas as pd
 import os
@@ -89,7 +90,12 @@ def main():
     part_singular = default_config.get('part_singular')
     part_plural = default_config.get('part_plural')
     custom_description = default_config.get('custom_description')
+    send_album = int(default_config.get('send_album'))
     list_str_part = [part_singular, part_plural]
+
+    if send_album != 0 and send_album != 1:
+        print('\nConfig send_album unrecognized.\n')
+        return
 
     while True:
         # get list of folders
@@ -112,7 +118,10 @@ def main():
         list_dict_description = update_descriptions(list_dict_description, first_description_personalized)
 
         # send files via telegram API
-        telegram_filesender.send_files(list_dict_description, chat_id)
+        if send_album == 1:
+            send_files_mode_album_doc(list_dict_description, chat_id, 'me')
+        else:
+            telegram_filesender.send_files(list_dict_description, chat_id)
 
         # move project 'zipped folder' to 'uploaded folder'
         path_dir_project = os.path.join(folder_toupload, dir_project_name)
@@ -121,6 +130,55 @@ def main():
         # log messages
         utils.add_log(status='uploaded', msg=dir_project_name)
         print("Upload completed: ", dir_project_name)
+
+
+def get_list_dict_sent_doc(return_send_files):
+
+    list_dict_sent_doc = []
+
+    for message_file in return_send_files:
+        dict_sent_doc = {}
+        dict_sent_doc['file_id'] = message_file['document']["file_id"]
+        dict_sent_doc['caption'] = message_file['caption']
+        dict_sent_doc['message_id'] = int(message_file['message_id'])
+        list_dict_sent_doc.append(dict_sent_doc)
+    return list_dict_sent_doc
+
+
+def get_list_message_id(list_dict_sent_doc):
+
+    list_message_id = []
+    for dict_sent_doc in list_dict_sent_doc:
+        message_id = dict_sent_doc['message_id']
+        list_message_id.append(message_id)
+    return list_message_id
+
+
+def send_files_mode_album_doc(list_dict_description, chat_id, chat_id_cache):
+
+    return_send_files = telegram_filesender.send_files(list_dict_description,
+                                                       chat_id_cache)
+    list_dict_sent_doc = get_list_dict_sent_doc(return_send_files)
+
+    # forward to the destination group in album format
+    #  generate "List Media Doc" to create album
+    list_list_dict_sent_doc = \
+        utils.split_list_in_lists_by_max(list_=list_dict_sent_doc, size_max=10)
+
+    for list_dict_sent_doc in list_list_dict_sent_doc:
+        # send to cache group
+        list_media_doc = api_telegram.get_list_media_doc(list_dict_sent_doc)
+
+        # forward from cache group to destination group
+        api_telegram.send_media_group(chat_id=chat_id,
+                                      list_media=list_media_doc)
+
+        # delete messages from cache group
+        list_message_id = get_list_message_id(list_dict_sent_doc)
+        api_telegram.delete_messages(chat_id=chat_id_cache,
+                                     list_message_id=list_message_id)
+
+    return return_send_files
 
 
 if __name__ == "__main__":

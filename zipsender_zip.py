@@ -1,7 +1,7 @@
-from utils import add_path_script_folders
-list_folders_name = ['Zipind']
+from zipsender_utils import add_path_script_folders
+list_folders_name = ['zipind']
 add_path_script_folders(list_folders_name)
-import zipind
+import zipind_utils, zipind_core
 
 import os
 import time
@@ -30,7 +30,7 @@ def get_folder_to_zip_approved(list_folders_path_approved):
 
 def sanitize_folder(folder_path):
 
-    folder_path_raw = zipind.normalize_string_to_link(string_actual=folder_path)
+    folder_path_raw = zipind_utils.normalize_string_to_link(folder_path)
     folder_path_sanitize = folder_path_raw.strip('_')
 
     return folder_path_sanitize
@@ -40,9 +40,9 @@ def get_path_dir_output(folder_zipped, folder_path_input):
 
     folder_project = sanitize_folder(folder_path=folder_path_input)
     path_dir_output = os.path.join(folder_zipped, folder_project)
-    zipind.ensure_folder_existence([path_dir_output])
+    zipind_utils.ensure_folder_existence([path_dir_output])
     path_dir_output = os.path.join(folder_zipped, folder_project, 'output')
-    zipind.ensure_folder_existence([path_dir_output])
+    zipind_utils.ensure_folder_existence([path_dir_output])
     return path_dir_output
 
 
@@ -53,8 +53,10 @@ def get_path_dir_project_toupload_auth(path_dir_project_toupload):
     # auth caracter
     name_dir_project_auth = '_' + name_dir_project
 
-    folder_toupload = os.path.abspath(os.path.join(path_dir_project_toupload, '..'))
-    project_toupload_auth = os.path.join(folder_toupload, name_dir_project_auth)
+    folder_toupload = \
+        os.path.abspath(os.path.join(path_dir_project_toupload, '..'))
+    project_toupload_auth = \
+        os.path.join(folder_toupload, name_dir_project_auth)
 
     return project_toupload_auth
 
@@ -72,7 +74,8 @@ def set_project_toupload_auth(path_dir_output):
     alert_flag = 0
     while True:
         try:
-            os.rename(path_dir_project_toupload, path_dir_project_toupload_auth)
+            os.rename(path_dir_project_toupload,
+                      path_dir_project_toupload_auth)
             if alert_flag == 1:
                 print(msg_rename_ok)
             else:
@@ -86,43 +89,6 @@ def set_project_toupload_auth(path_dir_output):
                 time.sleep(2)
 
 
-def test_pathfile_too_long(path_folder, max_path=260):
-    """Test pathfiile too long
-
-    Args:
-        path_folder (string):
-    return:
-        dict: keys: result, list_path_file_long
-    """
-
-    list_path_file_long = []
-    return_dict = {}
-    return_dict['result'] = True
-
-    for root, _, files in os.walk(path_folder):
-        for file in files:
-            file_path = os.path.join(root, file)
-            len_file_path = len(file_path)
-            if len_file_path > max_path:
-                list_path_file_long.append(file_path)
-
-    if len(list_path_file_long) != 0:
-        return_dict['result'] = False
-
-    return_dict['list_path_file_long'] = list_path_file_long
-    return return_dict
-
-
-def show_alert_pathfile_too_long(return_test_pathfile_too_long):
-
-    return_ = return_test_pathfile_too_long
-    if return_['result'] is False:
-        print("Path file too long:")
-        for path_file_long in return_['list_path_file_long']:
-            print('- ' + path_file_long)
-    print('')
-
-
 def get_list_path_folder(path_folder_root, list_folder_name):
 
     list_path_folder = []
@@ -130,25 +96,6 @@ def get_list_path_folder(path_folder_root, list_folder_name):
         path_folder = os.path.join(path_folder_root, folder_name)
         list_path_folder.append(path_folder)
     return list_path_folder
-
-
-def test_folders_path_len(list_path_folder, max_path):
-
-    list_folders_path_approved = []
-    list_folders_path_rejected = []
-
-    for path_folder in list_path_folder:
-        return_test_pathfile_too_long = \
-            test_pathfile_too_long(path_folder, max_path)
-        if return_test_pathfile_too_long['result']:
-            list_folders_path_approved.append(path_folder)
-        else:
-            # print list bad pathfile
-            show_alert_pathfile_too_long(return_test_pathfile_too_long)
-
-            list_folders_path_rejected.append(path_folder)
-
-    return list_folders_path_approved, list_folders_path_rejected
 
 
 def set_unauth_folder(folder_path):
@@ -178,7 +125,6 @@ def ensure_folders_sanatize(list_folders_path_rejected):
         # remove authorization character from rejected folders
         set_unauth_folders(list_folders_path_rejected)
         input('\nAfter correcting, press something to continue.\n')
-
         return True
     else:
         return False
@@ -212,20 +158,22 @@ def main():
     max_path = int(default_config.get('max_path'))
     mode = default_config.get('mode')
 
-    zipind.ensure_folder_existence([folder_tozip, folder_zipped, folder_toupload])
+    zipind_utils.ensure_folder_existence([folder_tozip, folder_zipped,
+                                          folder_toupload])
 
     while True:
         # get list of folders
         list_folder_to_zip = os.listdir(folder_tozip)
-        list_folder_to_zip_ready = get_list_folder_to_zip_ready(list_folder_to_zip)
+        list_folder_to_zip_ready = \
+            get_list_folder_to_zip_ready(list_folder_to_zip)
         list_path_folder_to_zip_ready = \
             get_list_path_folder(path_folder_root=folder_tozip,
                                  list_folder_name=list_folder_to_zip_ready)
 
         # test path_max and separates approved from rejected
         list_folders_path_approved, list_folders_path_rejected = \
-            test_folders_path_len(list_path_folder_to_zip_ready, max_path)
-
+            zipind_utils.test_folders_has_path_too_long(
+                list_path_folder_to_zip_ready, max_path)
 
         # ensures that authorized folders are approved in the path_max test
         if ensure_folders_sanatize(list_folders_path_rejected):
@@ -247,17 +195,17 @@ def main():
         path_dir_output = get_path_dir_output(folder_toupload, dir_input_name)
 
         # zip to destination folder
-        zipind.zipind(path_dir=folder_path_input, mb_per_file=mb_per_file,
-                      path_dir_output=path_dir_output, mode=mode)
-
+        zipind_core.zipind(path_dir=folder_path_input, mb_per_file=mb_per_file,
+                           path_dir_output=path_dir_output, mode=mode)
         time.sleep(5)
+
         # move from original folder to zipped
         shutil.move(folder_path_input, folder_zipped)
 
         # rename zipped project folder, adding authorization character
         set_project_toupload_auth(path_dir_output)
 
-        print("Zip finalizado: ", dir_input_name)
+        print("Zip finished: ", dir_input_name)
 
 
 if __name__ == "__main__":
