@@ -2,6 +2,33 @@ import os
 import sys
 import logging
 import datetime
+import zipfile
+import rarfile
+import py7zr
+
+
+def extzip_haspwd(file_path):
+    zipfile_ = zipfile.ZipFile(file_path)
+    for zinfo in zipfile_.infolist():
+        is_encrypted = zinfo.flag_bits & 0x1
+        if is_encrypted:
+            return True
+    return False
+
+
+def zip_haspwd(file_path):
+
+    dot_extension = os.path.splitext(file_path)[1]
+    extension = dot_extension.strip('.')
+    if extension == 'rar':
+        has_pwd = rarfile.RarFile(file_path).needs_password()
+    elif extension == 'zip':
+        has_pwd = extzip_haspwd(file_path)
+    elif extension == '7z':
+        has_pwd = py7zr.SevenZipFile(file_path).needs_password()
+    else:
+        return False
+    return has_pwd
 
 
 def get_size_group(list_, size_max):

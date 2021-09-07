@@ -1,0 +1,9 @@
+rarfile
+py7zr
+unidecode
+natsort
+pandas
+pyautogui
+pyrogram
+tgcrypto
+openpyxl

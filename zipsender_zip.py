@@ -1,12 +1,14 @@
-from zipsender_utils import add_path_script_folders
+from zipsender_utils import add_path_script_folders, zip_haspwd
 list_folders_name = ['zipind']
 add_path_script_folders(list_folders_name)
 import zipind_utils, zipind_core
 
+import json
 import os
 import time
 import shutil
 from configparser import ConfigParser
+import datetime
 
 
 def get_list_folder_to_zip_ready(list_folder_to_zip):
@@ -144,6 +146,93 @@ def revert_original_folder_name(folder_path):
         return False
 
 
+def get_folder_structure(path_folder):
+
+    list_path_file = []
+    for root, _, files in os.walk(path_folder):
+        for file in files:
+            path_file = os.path.join(root, file)
+            list_path_file.append(path_file)
+    return list_path_file
+
+
+def save_log_folder_structure(folder_name, dict_tasks, log_folder_path):
+
+    folder_name_sanitize = sanitize_folder(folder_name)
+    log_file_path = get_log_file_path(folder_name_sanitize, log_folder_path)
+
+    with open(log_file_path, 'w') as file_:
+        json.dump(dict_tasks, file_, indent=2)
+
+
+def get_log_file_path(folder_name, log_folder_path):
+
+    folder_destiny = log_folder_path
+    log_file_path = os.path.join(folder_destiny, folder_name + '.txt')
+    return log_file_path
+
+
+def format_list_file_path(list_file_path):
+
+    list_file_path_formatted = []
+    for file_path in list_file_path:
+        deep_level = file_path.count('\\')
+        file_path_format = ' '*deep_level + file_path
+        list_file_path_formatted.append(file_path_format)
+
+    str_folder_structure = '\n'.join(list_file_path_formatted)
+    return str_folder_structure
+
+
+def test_zipfiles_in_one_folder(folder_path):
+
+    def get_list_zip_file_path(list_path_file):
+
+        list_zip_file_path = []
+        for path_file in list_path_file:
+            dot_extension = os.path.splitext(path_file)[1]
+            extension = dot_extension.strip('.')
+            if extension in ['zip', 'rar', '7z']:
+                list_zip_file_path.append(path_file)
+        return list_zip_file_path
+
+    def get_list_file_with_pwd(list_zip_file_path):
+
+        list_file_with_pwd = []
+        for zip_file_path in list_zip_file_path:
+            haspwd = zip_haspwd(zip_file_path)
+            if haspwd:
+                list_file_with_pwd.append(zip_file_path)
+        return list_file_with_pwd
+
+    list_file_path = get_folder_structure(folder_path)
+    list_zip_file_path = get_list_zip_file_path(list_file_path)
+    if len(list_zip_file_path) == 0:
+        return True
+
+    list_zip_file_path_with_pwd = \
+        get_list_file_with_pwd(list_zip_file_path)
+
+    if len(list_zip_file_path_with_pwd) == 0:
+        # TODO: Alert that zip file in the project.
+        #       Ask if you want to check again or accept as you are.
+        if accept_zipfiles(list_zip_file_path):
+            return True
+        else:
+            return False
+    else:
+        # TODO: alertar que existe arquivo zip com senha
+        return False
+
+
+def test_zipfiles(list_folders_path_approved):
+
+    for folder_path in list_folders_path_approved:
+        if test_zipfiles_in_one_folder(folder_path) is False:
+            return False
+    return True
+
+
 def main():
 
     config = ConfigParser()
@@ -157,9 +246,10 @@ def main():
     mb_per_file = int(default_config.get('mb_per_file'))
     max_path = int(default_config.get('max_path'))
     mode = default_config.get('mode')
+    log_folder_path = default_config.get('log_folder_path')
 
     zipind_utils.ensure_folder_existence([folder_tozip, folder_zipped,
-                                          folder_toupload])
+                                          folder_toupload, log_folder_path])
 
     while True:
         # get list of folders
@@ -179,25 +269,42 @@ def main():
         if ensure_folders_sanatize(list_folders_path_rejected):
             continue
 
+
+        # if test_zipfiles(list_folders_path_approved) is False:
+        #     continue
+
         # get first item from the list of approved folders
-        dir_input_name = get_folder_to_zip_approved(list_folders_path_approved)
-        if dir_input_name is False:
-            # aguardar
+        folder_input_name = get_folder_to_zip_approved(list_folders_path_approved)
+        if folder_input_name is False:
             time.sleep(5)
             continue
 
         # reverse original name of project folder
-        folder_path_input = os.path.join(folder_tozip, dir_input_name)
+        folder_path_input = os.path.join(folder_tozip, folder_input_name)
         folder_path_input = revert_original_folder_name(folder_path_input)
-        dir_input_name = os.path.basename(folder_path_input)
+        folder_input_name = os.path.basename(folder_path_input)
 
         # define destination folder.: toupload
-        path_dir_output = get_path_dir_output(folder_toupload, dir_input_name)
+        path_dir_output = get_path_dir_output(folder_toupload,
+                                              folder_input_name)
 
         # zip to destination folder
-        zipind_core.zipind(path_dir=folder_path_input, mb_per_file=mb_per_file,
-                           path_dir_output=path_dir_output, mode=mode)
-        time.sleep(5)
+
+        # Creates grouped files for independent compression
+        dict_tasks = \
+            zipind_core.get_dict_tasks(folder_path_input, mb_per_file,
+                                       path_dir_output, mode)
+        # save log dict_tasks
+        save_log_folder_structure(folder_input_name, dict_tasks,
+                                  log_folder_path)
+
+        # Start Compression
+        zipind_core.zipind_process(dict_tasks, mode)
+
+        # zipind_core.zipind(path_dir=folder_path_input, mb_per_file=mb_per_file,
+        #                    path_dir_output=path_dir_output, mode=mode)
+
+        time.sleep(4)
 
         # move from original folder to zipped
         shutil.move(folder_path_input, folder_zipped)
@@ -205,7 +312,7 @@ def main():
         # rename zipped project folder, adding authorization character
         set_project_toupload_auth(path_dir_output)
 
-        print("Zip finished: ", dir_input_name)
+        print("Zip finished: ", folder_input_name)
 
 
 if __name__ == "__main__":
