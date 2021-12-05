@@ -5,7 +5,7 @@ import shutil
 import time
 import zipsender_utils
 from zipsender_utils import add_path_script_folders
-list_folders_name = [zipind_utils, 'Telegram_filesender']
+list_folders_name = ['zipind', 'Telegram_filesender']
 add_path_script_folders(list_folders_name)
 import telegram_filesender, utils_filesender, zipind_utils
 import api_telegram
@@ -128,8 +128,8 @@ def send_files_mode_album_doc(dir_project_name,
                               chat_id_cache,
                               log_project_sent_folder_path):
 
-    return_send_files = telegram_filesender.send_files(list_dict_description,
-                                                       chat_id_cache)
+    return_send_files = api_telegram.send_files(list_dict_description,
+                                                chat_id_cache)
 
     list_dict_sent_doc = get_list_dict_sent_doc(return_send_files)
 
