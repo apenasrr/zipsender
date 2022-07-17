@@ -226,8 +226,8 @@ def main():
     folder_toupload = default_config.get("folder_toupload")
     folder_uploaded = default_config.get("folder_uploaded")
     chat_id = int(default_config.get("chat_id"))
-    chat_id_cache = int(default_config.get("chat_id_cache"))
-    chat_id_cache = "me" if chat_id_cache is None else chat_id_cache
+    chat_id_cache = default_config.get("chat_id_cache")
+    chat_id_cache = "me" if chat_id_cache is None else int(chat_id_cache)
     sticker = default_config.get("sticker")
     part_singular = default_config.get("part_singular")
     part_plural = default_config.get("part_plural")
