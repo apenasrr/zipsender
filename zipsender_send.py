@@ -216,6 +216,11 @@ def send_files_mode_album_doc(
     return return_send_files
 
 
+def test_connection():
+
+    api_telegram.send_message("me", "telegram_filesender - test connection")
+
+
 def main():
 
     config = ConfigParser()
@@ -247,6 +252,8 @@ def main():
     if send_album != 0 and send_album != 1:
         print("\nConfig send_album unrecognized.\n")
         return
+
+    test_connection()
 
     while True:
         # get list of folders
