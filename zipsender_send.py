@@ -2,9 +2,11 @@ import os
 import shutil
 import time
 from configparser import ConfigParser
+from pathlib import Path
 
 import pandas as pd
 
+import upload_plan
 import zipsender_utils
 from zipsender_utils import add_path_script_folders
 
@@ -19,7 +21,7 @@ import zipind_utils
 def gen_data_frame(path_folder):
 
     list_data = []
-    for root, dirs, files in os.walk(path_folder):
+    for root, _, files in os.walk(path_folder):
         for file in files:
             d = {}
             file_path = os.path.join(root, file)
@@ -87,9 +89,10 @@ def update_descriptions(
     folder_project_name,
     title_log_file_list,
 ):
-    """Add a text file with a tree-map of each packages and their internal
+    """
+    1 - Add a text file with a tree-map of each packages and their internal
     files. (project log)
-    And set custom description for for first file
+    2 - set custom description for first file
 
     Args:
         list_dict_description (list[dict]): Files descriptions
@@ -103,7 +106,7 @@ def update_descriptions(
     """
 
     # Add project file structure
-    folder_project_name = folder_project_name.strip("_")
+    folder_project_name = folder_project_name.strip("_").replace("_", " ")
     path_file_log = os.path.join(log_folder_path, folder_project_name + ".txt")
     log_description = f"{folder_project_name}\n{title_log_file_list}"
     dict_log = {"file_output": path_file_log, "description": log_description}
@@ -130,7 +133,14 @@ def get_list_dict_sent_doc(return_send_files):
         chat_id = int(message_file.chat.id)
         return_message_data = api_telegram.get_messages(chat_id, [message_id])
 
-        dict_sent_doc["file_id"] = return_message_data[0].document.file_id
+        if return_message_data[0].document:
+
+            dict_sent_doc["file_id"] = return_message_data[0].document.file_id
+
+        elif return_message_data[0].photo:
+            dict_sent_doc["file_id"] = return_message_data[0].photo.file_id
+        else:
+            raise Exception("File not found")
 
         list_dict_sent_doc.append(dict_sent_doc)
     return list_dict_sent_doc
@@ -153,6 +163,21 @@ def send_files_mode_album_doc(
     log_project_sent_folder_path,
     sticker=None,
 ):
+    # TODO: Make any file in the report other than document,
+    # be sent to the album
+    ## If first file is a photo,
+    ## it must be separated from the list and not sent inside the album
+    ## but only sent at the end, outside the album
+    ## This album used supports only document files
+    first_dict_description = list_dict_description[0]
+    first_file_extension = str(
+        Path(first_dict_description.get("file_output")).suffix
+    ).lower()
+    dict_cover_image = None
+    if first_file_extension in [".jpg", ".png", ".gif"]:
+        dict_cover_image = list_dict_description[0]
+        # Removes the image from the list of files to be sent via album
+        list_dict_description = list_dict_description[1:].copy()
 
     return_send_files = api_telegram.send_files(
         list_dict_description, chat_id_cache
@@ -174,11 +199,19 @@ def send_files_mode_album_doc(
         list_=list_dict_sent_doc, size_max=10
     )
 
+    if sticker:
+        api_telegram.send_sticker(chat_id, sticker)
+    # If there is cover image, Send Directly before sending the album
+    if dict_cover_image:
+        api_telegram.send_photo(
+            chat_id,
+            dict_cover_image["file_output"],
+            dict_cover_image["description"],
+        )
+
     list_return_send_media_group = []
     for list_dict_sent_doc in list_list_dict_sent_doc:
 
-        if sticker:
-            api_telegram.send_sticker(chat_id, sticker)
         # forward from cache group to destination group
         while True:
             try:
@@ -274,6 +307,7 @@ def main():
         folder_path_description = create_description_report(
             folder_toupload, folder_project_name
         )
+
         list_dict_description = telegram_filesender.get_list_desc(
             folder_path_description
         )
@@ -295,6 +329,13 @@ def main():
             log_folder_path,
             folder_project_name,
             title_log_file_list,
+        )
+
+        # Update upload plan with cover and project description in txt
+        list_dict_description = upload_plan.update(
+            list_dict_description,
+            Path(folder_toupload),
+            folder_project_name,
         )
 
         # send files via telegram API

@@ -1,20 +1,17 @@
-from zipsender_utils import add_path_script_folders, zip_haspwd
-
-list_folders_name = ["zipind"]
-add_path_script_folders(list_folders_name)
 import copy
-import json
 import os
 import shutil
 import time
 from configparser import ConfigParser
+from pathlib import Path
 
-import zipind_core
-import zipind_utils
+from zipind import zipind_core, zipind_utils
 
 import content_tree
+import extra
 import zipsender_utils
 from tree_directory import get_tree_directory
+from zipsender_utils import add_path_script_folders, zip_haspwd
 
 
 def get_list_folder_to_zip_ready(list_folder_to_zip):
@@ -47,9 +44,9 @@ def sanitize_folder(folder_path):
 def get_path_dir_output(folder_zipped, folder_path_input):
 
     folder_project = sanitize_folder(folder_path=folder_path_input)
-    path_dir_output = os.path.join(folder_zipped, folder_project)
+    path_dir_output = Path(folder_zipped) / folder_project
     zipind_utils.ensure_folder_existence([path_dir_output])
-    path_dir_output = os.path.join(folder_zipped, folder_project, "output")
+    path_dir_output = Path(folder_zipped) / folder_project / "output"
     zipind_utils.ensure_folder_existence([path_dir_output])
     return path_dir_output
 
@@ -145,7 +142,15 @@ def ensure_folders_sanatize(list_folders_path_rejected):
         return False
 
 
-def revert_original_folder_name(folder_path):
+def revert_original_folder_name(folder_path: str) -> bool:
+    """Remove underline at the beginning of the folder name
+
+    Args:
+        folder_path (str): folder path
+
+    Returns:
+        bool: False If folder does not start with underline
+    """
 
     folder_name = os.path.basename(folder_path)
     if folder_name[0] == "_":
@@ -245,6 +250,16 @@ def test_zipfiles(list_folders_path_approved):
     return True
 
 
+def move_config_to_parent_folder_path_output(
+    folder_path_input: Path, folder_path_output: Path
+) -> None:
+
+    config_path_orgn = Path(folder_path_input) / ".config"
+    config_path_dest = Path(folder_path_output).parent.absolute() / ".config"
+    if config_path_orgn.exists():
+        config_path_orgn.rename(config_path_dest)
+
+
 def main():
 
     config = ConfigParser()
@@ -299,20 +314,28 @@ def main():
             continue
 
         # reverse original name of project folder
-        folder_path_input = os.path.join(folder_tozip, folder_input_name)
+        folder_path_input = Path(folder_tozip) / folder_input_name
         folder_path_input = revert_original_folder_name(folder_path_input)
-        folder_input_name = os.path.basename(folder_path_input)
+        folder_input_name = Path(folder_path_input).name
 
         # define destination folder.: toupload
-        path_dir_output = get_path_dir_output(
+        folder_path_output = get_path_dir_output(
             folder_toupload, folder_input_name
         )
 
-        # zip to destination folder
+        move_config_to_parent_folder_path_output(
+            folder_path_input, folder_path_output
+        )
+
+        extra.include_list(
+            ["cover", "description"],
+            Path(folder_path_input),
+            folder_path_output,
+        )
 
         # Creates grouped files for independent compression
         dict_tasks = zipind_core.get_dict_tasks(
-            folder_path_input, mb_per_file, path_dir_output, mode
+            folder_path_input, mb_per_file, folder_path_output, mode
         )
         # save log dict_tasks
         save_log_folder_structure(
@@ -328,7 +351,7 @@ def main():
         shutil.move(folder_path_input, folder_zipped)
 
         # rename zipped project folder, adding authorization character
-        set_project_toupload_auth(path_dir_output)
+        set_project_toupload_auth(folder_path_output)
 
         print("Zip finished: ", folder_input_name)
 
