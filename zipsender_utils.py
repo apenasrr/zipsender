@@ -8,6 +8,12 @@ import zipfile
 # import rarfile
 
 
+def create_txt(file_path, stringa):
+
+    file = open(file_path, "w", encoding="utf8")
+    file.write(stringa)
+    file.close()
+
 def save_txt(str_content, str_name):
 
     # UTF-8 can't handle with the follow caracter in a folder name: 

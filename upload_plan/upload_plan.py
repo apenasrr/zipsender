@@ -20,7 +20,7 @@ def find_extra(extra_name: str, folder_path_project: Path) -> Path | None:
 
 
 def format_image(cover_path: Path) -> Path:
-    """If image is webm, convert to JPG
+    """If image is webp, convert to JPG
 
     Args:
         cover_path (Path): _description_
@@ -29,7 +29,7 @@ def format_image(cover_path: Path) -> Path:
         Path: _description_
     """
 
-    if cover_path.suffix == ".webm":
+    if cover_path.suffix.lower() == ".webp":
         cover_path_formated = cover_path.parent / cover_path.stem + ".jpg"
         os.system(
             f"ffmpeg -i {str(cover_path.absolute())} {str(cover_path_formated)}"
