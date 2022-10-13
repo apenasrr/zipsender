@@ -1,3 +1,4 @@
+import asyncio
 import os
 import shutil
 import time
@@ -127,8 +128,9 @@ def get_list_dict_sent_doc(return_send_files):
         dict_sent_doc["message_id"] = message_id
 
         chat_id = int(message_file.chat.id)
-        return_message_data = tgsender.api.get_messages(chat_id, [message_id])
-
+        return_message_data = asyncio.run(
+            tgsender.api_async.get_messages(chat_id, [message_id])
+        )
         if return_message_data[0].document:
 
             dict_sent_doc["file_id"] = return_message_data[0].document.file_id
@@ -175,8 +177,8 @@ def send_files_mode_album_doc(
         # Removes the image from the list of files to be sent via album
         list_dict_description = list_dict_description[1:].copy()
 
-    return_send_files = tgsender.api.send_files(
-        list_dict_description, chat_id_cache
+    return_send_files = asyncio.run(
+        tgsender.api_async.send_files(list_dict_description, chat_id_cache)
     )
 
     list_dict_sent_doc = get_list_dict_sent_doc(return_send_files)
@@ -196,13 +198,16 @@ def send_files_mode_album_doc(
     )
 
     if sticker:
-        tgsender.api.send_sticker(chat_id, sticker)
+        asyncio.run(tgsender.api_async.send_sticker(chat_id, sticker))
     # If there is cover image, Send Directly before sending the album
     if dict_cover_image:
-        tgsender.api.send_photo(
-            chat_id,
-            dict_cover_image["file_output"],
-            dict_cover_image["description"],
+
+        asyncio.run(
+            tgsender.api_async.send_photo(
+                chat_id,
+                dict_cover_image["file_output"],
+                dict_cover_image["description"],
+            )
         )
 
     list_return_send_media_group = []
@@ -212,11 +217,13 @@ def send_files_mode_album_doc(
         while True:
             try:
                 # send to cache group
-                list_media_doc = tgsender.api.get_list_media_doc(
+                list_media_doc = tgsender.api_async.get_list_media_doc(
                     list_dict_sent_doc
                 )
-                return_send_media_group = tgsender.api.send_media_group(
-                    chat_id=chat_id, list_media=list_media_doc
+                return_send_media_group = asyncio.run(
+                    tgsender.api_async.send_media_group(
+                        chat_id=chat_id, list_media=list_media_doc
+                    )
                 )
                 list_return_send_media_group.append(return_send_media_group)
                 break
@@ -229,8 +236,10 @@ def send_files_mode_album_doc(
         try:
             # delete messages from cache group
             list_message_id = get_list_message_id(list_dict_sent_doc)
-            tgsender.api.delete_messages(
-                chat_id=chat_id_cache, list_message_id=list_message_id
+            asyncio.run(
+                tgsender.api_async.delete_messages(
+                    chat_id=chat_id_cache, list_message_id=list_message_id
+                )
             )
         except Exception as e:
             print(e)
@@ -277,7 +286,7 @@ def main():
         print("\nConfig send_album unrecognized.\n")
         return
 
-    tgsender.api.ensure_connection()
+    asyncio.run(tgsender.api_async.ensure_connection())
 
     while True:
         # get list of folders
@@ -340,7 +349,9 @@ def main():
                 sticker,
             )
         else:
-            tgsender.api.send_files(list_dict_description, chat_id)
+            asyncio.run(
+                tgsender.api_async.send_files(list_dict_description, chat_id)
+            )
 
         # move project 'zipped folder' to 'uploaded folder'
         path_dir_project = os.path.join(folder_toupload, folder_project_name)
