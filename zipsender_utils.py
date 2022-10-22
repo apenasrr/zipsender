@@ -1,4 +1,5 @@
 import datetime
+import json
 import logging
 import os
 import sys
@@ -8,11 +9,30 @@ import zipfile
 # import rarfile
 
 
+def load_json(json_path):
+
+    list_encode = ["utf-8-sig", "utf16", "ISO-8859-1"]  # utf8, utf16, ansi
+    for encode in list_encode:
+        try:
+            file = open(json_path, "r", encoding=encode)
+            file_content = str(file.readline().strip())
+            project_metadata = json.loads(file_content)
+            file.close()
+            return project_metadata
+        except:
+            continue
+
+    file = open(json_path, "r", encoding=encode)
+    file_content = file.readline()
+    raise Exception("encode", f"Cannot open file: {json_path}")
+
+
 def create_txt(file_path, stringa):
 
     file = open(file_path, "w", encoding="utf8")
     file.write(stringa)
     file.close()
+
 
 def save_txt(str_content, str_name):
 

@@ -1,4 +1,4 @@
-import asyncio
+import json
 import os
 import shutil
 import time
@@ -6,7 +6,7 @@ from configparser import ConfigParser
 from pathlib import Path
 
 import pandas as pd
-import tgsender
+from tgsender import tgsender
 from zipind import zipind_utils
 
 import upload_plan
@@ -39,10 +39,6 @@ def create_description_report(folder_toupload, folder_project_name):
 
     df = gen_data_frame(os.path.abspath(path_dir_project_output))
     df.to_csv(path_description, index=False)
-    folder_path_description = os.path.join(
-        folder_toupload, folder_project_name
-    )
-    return folder_path_description
 
 
 def get_personalize_description(
@@ -83,6 +79,7 @@ def update_descriptions(
     log_folder_path,
     folder_project_name,
     title_log_file_list,
+    project_metadata,
 ):
     """
     1 - Add a text file with a tree-map of each packages and their internal
@@ -95,17 +92,34 @@ def update_descriptions(
         log_folder_path (str): Path of log_folder
         folder_project_name (str): Name of project folder
         title_log_file_list (str): Description of a text file 'project log'
+        project_metadata (dict): project metadata
 
     Returns:
         list[dict]: Descriptions updates
     """
 
+    def compose_log_description(
+        project_name_show, title_log_file_list, project_metadata
+    ):
+
+        log_description = f"{project_name_show}\n{title_log_file_list}"
+        if "stream_link" in project_metadata.keys():
+            # update log_description with watch_online line
+            stream_link = project_metadata.get("stream_link")
+            line_watch_online = f"Watch Online: {stream_link}"
+            log_description = f"{log_description}\n\n{line_watch_online}"
+        return log_description
+
+    # body
     # Add project file structure
     folder_project_name = folder_project_name.strip("_")
-    # .replace("_", " ")
     path_file_log = os.path.join(log_folder_path, folder_project_name + ".txt")
     project_name_show = folder_project_name.replace("_", " ")
-    log_description = f"{project_name_show}\n{title_log_file_list}"
+
+    log_description = compose_log_description(
+        project_name_show, title_log_file_list, project_metadata
+    )
+
     dict_log = {"file_output": path_file_log, "description": log_description}
     list_dict_log = [dict_log]
 
@@ -128,9 +142,7 @@ def get_list_dict_sent_doc(return_send_files):
         dict_sent_doc["message_id"] = message_id
 
         chat_id = int(message_file.chat.id)
-        return_message_data = asyncio.run(
-            tgsender.api_async.get_messages(chat_id, [message_id])
-        )
+        return_message_data = tgsender.api.get_messages(chat_id, [message_id])
         if return_message_data[0].document:
 
             dict_sent_doc["file_id"] = return_message_data[0].document.file_id
@@ -177,8 +189,8 @@ def send_files_mode_album_doc(
         # Removes the image from the list of files to be sent via album
         list_dict_description = list_dict_description[1:].copy()
 
-    return_send_files = asyncio.run(
-        tgsender.api_async.send_files(list_dict_description, chat_id_cache)
+    return_send_files = tgsender.api.send_files(
+        list_dict_description, chat_id_cache
     )
 
     list_dict_sent_doc = get_list_dict_sent_doc(return_send_files)
@@ -198,16 +210,13 @@ def send_files_mode_album_doc(
     )
 
     if sticker:
-        asyncio.run(tgsender.api_async.send_sticker(chat_id, sticker))
+        tgsender.api.send_sticker(chat_id, sticker)
     # If there is cover image, Send Directly before sending the album
     if dict_cover_image:
-
-        asyncio.run(
-            tgsender.api_async.send_photo(
-                chat_id,
-                dict_cover_image["file_output"],
-                dict_cover_image["description"],
-            )
+        tgsender.api.send_photo(
+            chat_id,
+            dict_cover_image["file_output"],
+            dict_cover_image["description"],
         )
 
     list_return_send_media_group = []
@@ -217,13 +226,11 @@ def send_files_mode_album_doc(
         while True:
             try:
                 # send to cache group
-                list_media_doc = tgsender.api_async.get_list_media_doc(
+                list_media_doc = tgsender.api.get_list_media_doc(
                     list_dict_sent_doc
                 )
-                return_send_media_group = asyncio.run(
-                    tgsender.api_async.send_media_group(
-                        chat_id=chat_id, list_media=list_media_doc
-                    )
+                return_send_media_group = tgsender.api.send_media_group(
+                    chat_id=chat_id, list_media=list_media_doc
                 )
                 list_return_send_media_group.append(return_send_media_group)
                 break
@@ -236,10 +243,8 @@ def send_files_mode_album_doc(
         try:
             # delete messages from cache group
             list_message_id = get_list_message_id(list_dict_sent_doc)
-            asyncio.run(
-                tgsender.api_async.delete_messages(
-                    chat_id=chat_id_cache, list_message_id=list_message_id
-                )
+            tgsender.api.delete_messages(
+                chat_id=chat_id_cache, list_message_id=list_message_id
             )
         except Exception as e:
             print(e)
@@ -252,6 +257,17 @@ def send_files_mode_album_doc(
     zipsender_utils.create_txt(path_file_sent_2, str(stringa))
 
     return return_send_files
+
+
+def get_project_metadata(folder_path_description):
+
+    # body
+    project_metadata_path = Path(folder_path_description) / ".config"
+    if project_metadata_path.exists():
+        project_metadata = zipsender_utils.load_json(project_metadata_path)
+    else:
+        project_metadata = {}
+    return project_metadata
 
 
 def main():
@@ -286,7 +302,7 @@ def main():
         print("\nConfig send_album unrecognized.\n")
         return
 
-    asyncio.run(tgsender.api_async.ensure_connection())
+    tgsender.api.ensure_connection()
 
     while True:
         # get list of folders
@@ -304,7 +320,9 @@ def main():
             continue
 
         # create description.xlsx
-        folder_path_description = create_description_report(
+        create_description_report(folder_toupload, folder_project_name)
+
+        folder_path_description = os.path.join(
             folder_toupload, folder_project_name
         )
 
@@ -312,23 +330,22 @@ def main():
             Path(folder_path_description)
         )
 
-        if len(list_dict_description) == 0:
-            print(f"\nEmpty file: {folder_path_description}\n")
-            time.sleep(10)
-            continue
-
         # Add a text file with a tree-map of each packages and their internal
         #     files. (project log)
         #     And set custom description for for first file
         first_description_personalized = get_personalize_description(
             list_dict_description, list_str_part, custom_description
         )
+
+        project_metadata = get_project_metadata(folder_path_description)
+
         list_dict_description = update_descriptions(
             list_dict_description,
             first_description_personalized,
             log_folder_path,
             folder_project_name,
             title_log_file_list,
+            project_metadata,
         )
 
         # Update upload plan with cover and project description in txt
@@ -349,9 +366,7 @@ def main():
                 sticker,
             )
         else:
-            asyncio.run(
-                tgsender.api_async.send_files(list_dict_description, chat_id)
-            )
+            tgsender.api.send_files(list_dict_description, chat_id)
 
         # move project 'zipped folder' to 'uploaded folder'
         path_dir_project = os.path.join(folder_toupload, folder_project_name)
