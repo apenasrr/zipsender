@@ -20,12 +20,12 @@ def gen_data_frame(path_folder):
         for file in files:
             d = {}
             file_path = os.path.join(root, file)
-            d["file_output"] = file_path
+            d["file_path"] = file_path
             d["description"] = file
             list_data.append(d)
 
     df = pd.DataFrame(list_data)
-    list_columns = ["file_output", "description"]
+    list_columns = ["file_path", "description"]
     df = df.reindex(list_columns, axis=1)
 
     return df
@@ -120,7 +120,7 @@ def update_descriptions(
         project_name_show, title_log_file_list, project_metadata
     )
 
-    dict_log = {"file_output": path_file_log, "description": log_description}
+    dict_log = {"file_path": path_file_log, "description": log_description}
     list_dict_log = [dict_log]
 
     # personalize first file description
@@ -130,29 +130,59 @@ def update_descriptions(
     return list_dict_description_updated
 
 
-def get_list_dict_sent_doc(return_send_files):
+def get_list_dict_sent_doc(list_log_file_path: list[Path]) -> list[dict]:
+    """From file sent log files, returns a list of dictionaries
+    with key caption, message_id, file_id.
+
+    Args:
+        list_log_file_path (list[Path]):
+            List of paths of shipping log files
+
+    Raises:
+        Exception:
+            If file_id of a log data is invalid according to API
+
+    Returns:
+        list[dict]:
+            List of dict with keys: caption, message_id, file_id
+    """
 
     list_dict_sent_doc = []
-    for message_file in return_send_files:
+    list_message_file = []
 
+    # Open all JSON files
+    for log_file_path in list_log_file_path:
+        message_file = json.load(open(log_file_path, encoding="utf-8"))
+        list_message_file.append(message_file)
+
+    # Mount List_Dict with needed keys and, in parallel, mount message_id list
+    list_message_id = []
+    for message_file in list_message_file:
         dict_sent_doc = {}
-        dict_sent_doc["caption"] = message_file.caption
-
-        message_id = int(message_file.id)
+        dict_sent_doc["caption"] = message_file["caption"]
+        message_id = int(message_file["id"])
         dict_sent_doc["message_id"] = message_id
+        chat_id = int(message_file["chat"]["id"])
+        list_dict_sent_doc.append(dict_sent_doc)
+        list_message_id.append(message_id)
 
-        chat_id = int(message_file.chat.id)
-        return_message_data = tgsender.api.get_messages(chat_id, [message_id])
-        if return_message_data[0].document:
+    # Capture all updated file_id from the message_id list
+    list_message_file_id = tgsender.api.get_messages(chat_id, list_message_id)
 
-            dict_sent_doc["file_id"] = return_message_data[0].document.file_id
+    # Complement list_dict with file_id
+    for index, message_data in enumerate(list_message_file_id):
 
-        elif return_message_data[0].photo:
-            dict_sent_doc["file_id"] = return_message_data[0].photo.file_id
+        if message_data.document:
+
+            list_dict_sent_doc[index][
+                "file_id"
+            ] = message_data.document.file_id
+
+        elif message_data.photo:
+            list_dict_sent_doc[index]["file_id"] = message_data.photo.file_id
         else:
             raise Exception("File not found")
 
-        list_dict_sent_doc.append(dict_sent_doc)
     return list_dict_sent_doc
 
 
@@ -181,7 +211,7 @@ def send_files_mode_album_doc(
     ## This album used supports only document files
     first_dict_description = list_dict_description[0]
     first_file_extension = str(
-        Path(first_dict_description.get("file_output")).suffix
+        Path(first_dict_description.get("file_path")).suffix
     ).lower()
     dict_cover_image = None
     if first_file_extension in [".jpg", ".png", ".gif"]:
@@ -189,11 +219,13 @@ def send_files_mode_album_doc(
         # Removes the image from the list of files to be sent via album
         list_dict_description = list_dict_description[1:].copy()
 
-    return_send_files = tgsender.api.send_files(
-        list_dict_description, chat_id_cache
+    list_log_file_path = tgsender.api.send_files(
+        list_dict_description,
+        chat_id_cache,
+        folder_path_project=Path(log_project_sent_folder_path),
     )
 
-    list_dict_sent_doc = get_list_dict_sent_doc(return_send_files)
+    list_dict_sent_doc = get_list_dict_sent_doc(list_log_file_path)
 
     # save 'sent files to cache group' metadata
     name_file_sent_1 = dir_project_name + "-report_sent_1" + ".csv"
@@ -215,7 +247,7 @@ def send_files_mode_album_doc(
     if dict_cover_image:
         tgsender.api.send_photo(
             chat_id,
-            dict_cover_image["file_output"],
+            dict_cover_image["file_path"],
             dict_cover_image["description"],
         )
 
@@ -253,10 +285,10 @@ def send_files_mode_album_doc(
     # save sent album metadata
     stringa = str(list_return_send_media_group)
     name_file_sent_2 = dir_project_name + "-report_sent_2" + ".txt"
-    path_file_sent_2 = os.path.join("log_project_sent", name_file_sent_2)
+    path_file_sent_2 = os.path.join(
+        log_project_sent_folder_path, name_file_sent_2
+    )
     zipsender_utils.create_txt(path_file_sent_2, str(stringa))
-
-    return return_send_files
 
 
 def get_project_metadata(folder_path_description):
@@ -282,21 +314,17 @@ def main():
     chat_id = int(default_config.get("chat_id"))
     chat_id_cache = default_config.get("chat_id_cache")
     chat_id_cache = "me" if chat_id_cache is None else int(chat_id_cache)
+    time_limit = int(default_config.get("time_limit"))
     sticker = default_config.get("sticker")
     part_singular = default_config.get("part_singular")
     part_plural = default_config.get("part_plural")
     custom_description = default_config.get("custom_description")
     send_album = int(default_config.get("send_album"))
-    log_folder_path = default_config.get("log_folder_path")
-    log_project_sent_folder_path = default_config.get(
-        "log_project_sent_folder_path"
-    )
+    log_sent_folder_path = default_config.get("log_project_sent_folder_path")
     list_str_part = [part_singular, part_plural]
     title_log_file_list = default_config.get("title_log_file_list")
 
-    zipind_utils.ensure_folder_existence(
-        [log_folder_path, log_project_sent_folder_path]
-    )
+    zipind_utils.ensure_folder_existence([log_sent_folder_path])
 
     if send_album != 0 and send_album != 1:
         print("\nConfig send_album unrecognized.\n")
@@ -319,7 +347,7 @@ def main():
             time.sleep(5)
             continue
 
-        # create description.xlsx
+        # create upload_plan.csv
         create_description_report(folder_toupload, folder_project_name)
 
         folder_path_description = os.path.join(
@@ -342,7 +370,7 @@ def main():
         list_dict_description = update_descriptions(
             list_dict_description,
             first_description_personalized,
-            log_folder_path,
+            log_sent_folder_path,
             folder_project_name,
             title_log_file_list,
             project_metadata,
@@ -355,6 +383,12 @@ def main():
             folder_project_name,
         )
 
+        log_project_sent_folder_path = (
+            Path(log_sent_folder_path) / folder_project_name
+        )
+        if not log_project_sent_folder_path.exists():
+            log_project_sent_folder_path.mkdir()
+
         # send files via telegram API
         if send_album == 1:
             send_files_mode_album_doc(
@@ -366,7 +400,15 @@ def main():
                 sticker,
             )
         else:
-            tgsender.api.send_files(list_dict_description, chat_id)
+            log_folder_project = (
+                Path(log_sent_folder_path) / folder_project_name
+            )
+            if not log_folder_project.exists():
+                log_folder_project.mkdir()
+
+            tgsender.api.send_files(
+                list_dict_description, chat_id, time_limit, log_folder_project
+            )
 
         # move project 'zipped folder' to 'uploaded folder'
         path_dir_project = os.path.join(folder_toupload, folder_project_name)

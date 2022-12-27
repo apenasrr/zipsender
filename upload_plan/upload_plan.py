@@ -82,7 +82,7 @@ def update(
         )
         dict_description = [
             {
-                "file_output": description_txt_path_personal,
+                "file_path": description_txt_path_personal,
                 "description": description_txt_caption,
             }
         ]
@@ -100,7 +100,7 @@ def update(
         cover_caption = folder_project_name.strip("_").replace("_", " ")
         dict_cover = [
             {
-                "file_output": cover_path,
+                "file_path": cover_path,
                 "description": cover_caption,
             }
         ]
