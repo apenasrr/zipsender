@@ -314,7 +314,7 @@ def main():
     chat_id = int(default_config.get("chat_id"))
     chat_id_cache = default_config.get("chat_id_cache")
     chat_id_cache = "me" if chat_id_cache is None else int(chat_id_cache)
-    time_limit = int(default_config.get("time_limit"))
+    time_limit = int(default_config.get("time_limit", 50))
     sticker = default_config.get("sticker")
     part_singular = default_config.get("part_singular")
     part_plural = default_config.get("part_plural")
