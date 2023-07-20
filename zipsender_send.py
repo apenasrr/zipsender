@@ -13,10 +13,9 @@ import upload_plan
 import zipsender_utils
 
 
-def gen_data_frame(path_folder):
-
+def gen_data_frame(folder_path):
     list_data = []
-    for root, _, files in os.walk(path_folder):
+    for root, _, files in os.walk(folder_path):
         for file in files:
             d = {}
             file_path = os.path.join(root, file)
@@ -32,19 +31,17 @@ def gen_data_frame(path_folder):
 
 
 def create_description_report(folder_toupload, folder_project_name):
+    folder_path_project = os.path.join(folder_toupload, folder_project_name)
+    folder_path_project_output = os.path.join(folder_path_project, "output")
+    path_description = os.path.join(folder_path_project, "upload_plan.csv")
 
-    path_dir_project = os.path.join(folder_toupload, folder_project_name)
-    path_dir_project_output = os.path.join(path_dir_project, "output")
-    path_description = os.path.join(path_dir_project, "upload_plan.csv")
-
-    df = gen_data_frame(os.path.abspath(path_dir_project_output))
+    df = gen_data_frame(os.path.abspath(folder_path_project_output))
     df.to_csv(path_description, index=False)
 
 
 def get_personalize_description(
     list_dict_description, list_str_part, custom_description
 ):
-
     first_file_description = list_dict_description[0]["description"]
 
     # set count_parts
@@ -95,32 +92,34 @@ def update_descriptions(
         project_metadata (dict): project metadata
 
     Returns:
-        list[dict]: Descriptions updates
+        list[dict]: Descriptions updates.
     """
 
     def compose_log_description(
         project_name_show, title_log_file_list, project_metadata
     ):
-
         log_description = f"{project_name_show}\n{title_log_file_list}"
         if "stream_link" in project_metadata.keys():
             # update log_description with watch_online line
             stream_link = project_metadata.get("stream_link")
             line_watch_online = f"Watch Online: {stream_link}"
             log_description = f"{log_description}\n\n{line_watch_online}"
+        if "project_id" in project_metadata.keys():
+            project_id = project_metadata.get("project_id")
+            log_description = f"{log_description}\n#{project_id}"
         return log_description
 
     # body
     # Add project file structure
     folder_project_name = folder_project_name.strip("_")
-    path_file_log = os.path.join(log_folder_path, folder_project_name + ".txt")
+    file_path_log = os.path.join(log_folder_path, folder_project_name + ".txt")
     project_name_show = folder_project_name.replace("_", " ")
 
     log_description = compose_log_description(
         project_name_show, title_log_file_list, project_metadata
     )
 
-    dict_log = {"file_path": path_file_log, "description": log_description}
+    dict_log = {"file_path": file_path_log, "description": log_description}
     list_dict_log = [dict_log]
 
     # personalize first file description
@@ -171,9 +170,7 @@ def get_list_dict_sent_doc(list_log_file_path: list[Path]) -> list[dict]:
 
     # Complement list_dict with file_id
     for index, message_data in enumerate(list_message_file_id):
-
         if message_data.document:
-
             list_dict_sent_doc[index][
                 "file_id"
             ] = message_data.document.file_id
@@ -187,7 +184,6 @@ def get_list_dict_sent_doc(list_log_file_path: list[Path]) -> list[dict]:
 
 
 def get_list_message_id(list_dict_sent_doc):
-
     list_message_id = []
     for dict_sent_doc in list_dict_sent_doc:
         message_id = dict_sent_doc["message_id"]
@@ -196,9 +192,9 @@ def get_list_message_id(list_dict_sent_doc):
 
 
 def send_files_mode_album_doc(
-    dir_project_name,
+    folder_name_project,
     list_dict_description,
-    chat_id,
+    list_chat_id,
     chat_id_cache,
     log_project_sent_folder_path,
     sticker=None,
@@ -219,6 +215,7 @@ def send_files_mode_album_doc(
         # Removes the image from the list of files to be sent via album
         list_dict_description = list_dict_description[1:].copy()
 
+    # Upload all files
     list_log_file_path = tgsender.api.send_files(
         list_dict_description,
         chat_id_cache,
@@ -228,49 +225,60 @@ def send_files_mode_album_doc(
     list_dict_sent_doc = get_list_dict_sent_doc(list_log_file_path)
 
     # save 'sent files to cache group' metadata
-    name_file_sent_1 = dir_project_name + "-report_sent_1" + ".csv"
-    path_file_sent_1 = os.path.join(
-        log_project_sent_folder_path, name_file_sent_1
+    file_name_sent_1 = folder_name_project + "-report_sent_1" + ".csv"
+    file_path_sent_1 = os.path.join(
+        log_project_sent_folder_path, file_name_sent_1
     )
     df_files_metadata = pd.DataFrame(list_dict_sent_doc)
-    df_files_metadata.to_csv(path_file_sent_1, index=False)
+    df_files_metadata.to_csv(file_path_sent_1, index=False)
 
     # forward to the destination group in album format
     #  generate "List Media Doc" to create album
     list_list_dict_sent_doc = zipsender_utils.split_list_in_lists_by_max(
         list_=list_dict_sent_doc, size_max=10
     )
-
+    # If there is sticker, send Directly before sending the album
     if sticker:
-        tgsender.api.send_sticker(chat_id, sticker)
+        for chat_id in list_chat_id:
+            tgsender.api.send_sticker(chat_id, sticker)
+            time.sleep(5)
+
     # If there is cover image, Send Directly before sending the album
     if dict_cover_image:
-        tgsender.api.send_photo(
-            chat_id,
-            dict_cover_image["file_path"],
-            dict_cover_image["description"],
-        )
+        for chat_id in list_chat_id:
+            tgsender.api.send_photo(
+                chat_id,
+                dict_cover_image["file_path"],
+                dict_cover_image["description"],
+            )
+            time.sleep(5)
 
     list_return_send_media_group = []
     for list_dict_sent_doc in list_list_dict_sent_doc:
-
         # forward from cache group to destination group
-        while True:
-            try:
-                # send to cache group
-                list_media_doc = tgsender.api.get_list_media_doc(
-                    list_dict_sent_doc
-                )
-                return_send_media_group = tgsender.api.send_media_group(
-                    chat_id=chat_id, list_media=list_media_doc
-                )
-                list_return_send_media_group.append(return_send_media_group)
-                break
-            except Exception as e:
-                print(e)
-                print("\nError. Trying again...")
-                time.sleep(5)
-                continue
+        for index, chat_id in enumerate(list_chat_id):
+            forward_going = True
+            while forward_going:
+                try:
+                    # send to cache group
+                    list_media_doc = tgsender.api.get_list_media_doc(
+                        list_dict_sent_doc
+                    )
+                    return_send_media_group = tgsender.api.send_media_group(
+                        chat_id=chat_id, list_media=list_media_doc
+                    )
+                    if index == 0:
+                        list_return_send_media_group.append(
+                            return_send_media_group
+                        )
+                    if len(list_chat_id) > 1:
+                        time.sleep(5)
+                    forward_going = False
+                except Exception as e:
+                    print(e)
+                    print("\nError. Trying again...")
+                    time.sleep(5)
+                    continue
 
         try:
             # delete messages from cache group
@@ -284,15 +292,14 @@ def send_files_mode_album_doc(
 
     # save sent album metadata
     stringa = str(list_return_send_media_group)
-    name_file_sent_2 = dir_project_name + "-report_sent_2" + ".txt"
-    path_file_sent_2 = os.path.join(
-        log_project_sent_folder_path, name_file_sent_2
+    file_name_sent_2 = folder_name_project + "-report_sent_2" + ".txt"
+    file_path_sent_2 = os.path.join(
+        log_project_sent_folder_path, file_name_sent_2
     )
-    zipsender_utils.create_txt(path_file_sent_2, str(stringa))
+    zipsender_utils.create_txt(file_path_sent_2, str(stringa))
 
 
 def get_project_metadata(folder_path_description):
-
     # body
     project_metadata_path = Path(folder_path_description) / ".config"
     if project_metadata_path.exists():
@@ -302,8 +309,30 @@ def get_project_metadata(folder_path_description):
     return project_metadata
 
 
-def main():
+def get_list_chat_id(param_chat_id: str) -> list:
+    """Converts string parameter with 1 or more chat_id to chat_id list
 
+    Args:
+        param_chat_id (str): parameter with 1 or more chat_id separated by comma
+
+    Raises:
+        Exception: If the chat_id is invalid because it is not numerical
+
+    Returns:
+        list: chat_id list
+    """
+
+    list_param_moc_chat_id = [x.strip() for x in param_chat_id.split(",")]
+    list_chat_id = []
+    for chat_id in list_param_moc_chat_id:
+        try:
+            list_chat_id.append(int(chat_id))
+        except Exception:
+            raise Exception(f"chat_id invalid. - {chat_id}")
+    return list_chat_id
+
+
+def main():
     config = ConfigParser()
     config.read("config.ini", "UTF-8")
     default_config = dict(config["default"])
@@ -311,7 +340,9 @@ def main():
     # Define variables
     folder_toupload = default_config.get("folder_toupload")
     folder_uploaded = default_config.get("folder_uploaded")
-    chat_id = int(default_config.get("chat_id"))
+    param_chat_id = default_config.get("chat_id")
+    list_chat_id = get_list_chat_id(param_chat_id)
+
     chat_id_cache = default_config.get("chat_id_cache")
     chat_id_cache = "me" if chat_id_cache is None else int(chat_id_cache)
     time_limit = int(default_config.get("time_limit", 50))
@@ -320,6 +351,7 @@ def main():
     part_plural = default_config.get("part_plural")
     custom_description = default_config.get("custom_description")
     send_album = int(default_config.get("send_album"))
+    delete_after_send = int(default_config.get("delete_after_send"))
     log_sent_folder_path = default_config.get("log_project_sent_folder_path")
     list_str_part = [part_singular, part_plural]
     title_log_file_list = default_config.get("title_log_file_list")
@@ -358,6 +390,11 @@ def main():
             Path(folder_path_description)
         )
 
+        if len(list_dict_description) == 0:
+            print(f"\nEmpty file: {folder_path_description}\n")
+            time.sleep(10)
+            continue
+
         # Add a text file with a tree-map of each packages and their internal
         #     files. (project log)
         #     And set custom description for for first file
@@ -394,7 +431,7 @@ def main():
             send_files_mode_album_doc(
                 folder_project_name,
                 list_dict_description,
-                chat_id,
+                list_chat_id,
                 chat_id_cache,
                 log_project_sent_folder_path,
                 sticker,
@@ -405,14 +442,22 @@ def main():
             )
             if not log_folder_project.exists():
                 log_folder_project.mkdir()
-
+            # TODO: For no-album_mode, enable multi-forwarding
+            chat_id = list_chat_id[0]
             tgsender.api.send_files(
                 list_dict_description, chat_id, time_limit, log_folder_project
             )
 
         # move project 'zipped folder' to 'uploaded folder'
-        path_dir_project = os.path.join(folder_toupload, folder_project_name)
-        shutil.move(path_dir_project, folder_uploaded)
+        folder_path_project = os.path.join(
+            folder_toupload, folder_project_name
+        )
+
+        shutil.move(folder_path_project, folder_uploaded)
+
+        if delete_after_send == 1:
+            # remove zip files after upload
+            shutil.rmtree(str(Path(folder_uploaded) / folder_project_name))
 
         # log messages
         zipsender_utils.add_log(status="uploaded", msg=folder_project_name)
@@ -420,5 +465,4 @@ def main():
 
 
 if __name__ == "__main__":
-
     main()
