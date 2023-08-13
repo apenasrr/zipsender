@@ -352,6 +352,7 @@ def main():
     custom_description = default_config.get("custom_description")
     send_album = int(default_config.get("send_album"))
     delete_after_send = int(default_config.get("delete_after_send"))
+    log_folder_path = default_config.get("log_folder_path")
     log_sent_folder_path = default_config.get("log_project_sent_folder_path")
     list_str_part = [part_singular, part_plural]
     title_log_file_list = default_config.get("title_log_file_list")
@@ -407,7 +408,7 @@ def main():
         list_dict_description = update_descriptions(
             list_dict_description,
             first_description_personalized,
-            log_sent_folder_path,
+            log_folder_path,
             folder_project_name,
             title_log_file_list,
             project_metadata,
